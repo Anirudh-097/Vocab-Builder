@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../lib/db";
 import { requireSession } from "../../../../lib/auth";
 import { dayStart, todayKey } from "../../../../lib/dates";
-import { generateWordData } from "../../../../lib/groq";
 
 export async function GET() {
   try {
@@ -21,37 +20,22 @@ export async function GET() {
         })),
       });
     const unused = await db.word.findMany({
-      where: { score: null },
+      where: { initialized: true, score: null },
       orderBy: { createdAt: "asc" },
       take: 25,
     });
     if (!unused.length) return NextResponse.json({ words: [] });
-    const generated = await generateWordData(unused.map((x) => x.word));
     const words = await db.$transaction(async (tx) => {
-      for (const item of generated) {
-        const source = unused.find(
-          (x) => x.word.toLowerCase() === item.word.toLowerCase(),
-        );
-        if (!source) throw new Error("Generated word mismatch");
-        await tx.word.update({
-          where: { id: source.id },
-          data: {
-            meaning: item.meaning,
-            example: item.example,
-            synonyms: item.synonyms,
-            distractors: item.distractors,
-          },
-        });
-        await tx.score.create({
-          data: {
-            wordId: source.id,
-            status: "USED",
-            confidence: "NEW",
-            introducedOn: key,
-            nextReviewDate: dayStart(key),
-          },
-        });
-      }
+      await tx.score.createMany({
+        data: unused.map((source) => ({
+          wordId: source.id,
+          status: "USED" as const,
+          confidence: "NEW" as const,
+          introducedOn: key,
+          nextReviewDate: dayStart(key),
+        })),
+        skipDuplicates: true,
+      });
       return tx.score.findMany({
         where: { introducedOn: key },
         include: { word: true },

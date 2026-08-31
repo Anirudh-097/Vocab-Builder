@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: starter # use "free" for testing, but note the free tier spins down on inactivity (cold start on next request)
     branch: main
-    buildCommand: npm install && npx prisma generate && npm run build
+    buildCommand: yarn install --frozen-lockfile && npx prisma generate && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
@@ -13,9 +13,13 @@ services:
         sync: false # paste the Supabase connection string manually in the Render dashboard
       - key: GROQ_API_KEY
         sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
       - key: AUTH_USERNAME
         sync: false
       - key: AUTH_PASSWORD_HASH
         sync: false
       - key: SESSION_SECRET
         generateValue: true # Render generates a random secure value for you
+      - key: BACKGROUND_JOB_SECRET
+        sync: false # must match the secret stored in Supabase Vault for the cron job

@@ -14,6 +14,7 @@ model Word {
   example     String   @default("")
   synonyms    String[] @default([])
   distractors String[] @default([])
+  initialized Boolean  @default(false)
   createdAt   DateTime @default(now())
   score       Score?
 }

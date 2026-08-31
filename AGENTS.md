@@ -27,6 +27,7 @@ model Word {
   example     String
   synonyms    String[] // exactly 2
   distractors String[] // exactly 3
+  initialized Boolean  @default(false) // metadata has been generated and validated
   createdAt   DateTime @default(now())
 
   score       Score?
@@ -71,6 +72,7 @@ enum Confidence {
 
 Notes:
 - A `Score` row is created for a `Word` the moment it's introduced (status flips to `USED`), not before. Keeps the "never used" pool = words with no `Score` row (or `status = NOT_USED`).
+- `Word.initialized = false` means the seed word has no trusted LLM metadata yet. The background generator sets it to `true` only after validating meaning, example, exactly two synonyms, and exactly three distractors.
 - `masteryScore` is a derived convenience field for prioritization/UI, recomputed on every answer (see §6.3).
 
 ## 4. Word List Seeding (how to feed the 1000 words)
@@ -82,10 +84,7 @@ Notes:
    (or `.csv` with one word per line — either is fine, pick one and document it in `README.md`).
 2. Run a one-time seed script: `npm run seed:words`
    - Script reads the list, dedupes, inserts into `Word` table with **only `word` filled**; `meaning`, `example`, `synonyms`, `distractors` left blank.
-3. **Content generation strategy** (cost tradeoff — pick one, document the choice):
-   - **Option A — Just-in-time (recommended, cheapest to start)**: Generate meaning/example/synonyms/distractors only for the 25 words being introduced *that day*, via the single batched LLM call in §6.1. Words never introduced never cost an LLM call.
-   - **Option B — Pre-generate all 1000 upfront**: Run a batch script hitting Groq in chunks of 25 (40 calls total) to fill every row ahead of time. Simpler runtime code, but pays for words the user may never reach in 30 days.
-   - Default to **Option A** unless the user wants predictable upfront cost.
+3. **Content generation strategy**: Pre-generate metadata in the background. Supabase Cron invokes `POST /api/internal/generate-content` once per hour; the endpoint processes the next five uninitialized words in one Groq request and marks them `initialized = true` only after strict validation. This keeps user-facing daily requests database-only and avoids Groq rate-limit failures in the request path.
 4. Script location: `scripts/seed-words.ts`, idempotent (safe to re-run — skips words already in DB via the unique constraint).
 
 ## 5. Auth (single user)
@@ -94,7 +93,7 @@ No need for multi-user auth infra (NextAuth providers, OAuth, etc.). Keep it min
 
 - Store a single username + bcrypt password hash in environment variables (`AUTH_USERNAME`, `AUTH_PASSWORD_HASH`).
 - Login page (`/login`) posts credentials to `POST /api/auth/login`, which verifies against the env hash and sets a signed, httpOnly session cookie (JWT, e.g. via `jose`, short-lived + refreshed, or a long-lived single session since it's one user).
-- Next.js `middleware.ts` protects all routes under `/` (except `/login` and `/api/auth/*`) by checking the session cookie; redirects to `/login` if absent/invalid.
+- Next.js `middleware.ts` protects all routes under `/` (except `/login`, `/api/auth/*`, and the bearer-secret-protected internal generation endpoint) by checking the session cookie; redirects to `/login` if absent/invalid.
 - All other API routes (`/api/words/*`, `/api/test/*`) re-validate the session server-side before touching the DB — "API can be called only if login is authorised" applies to every route, not just page loads.
 - No signup flow, no password reset flow — it's provisioned via env vars at deploy time.
 
@@ -174,7 +173,8 @@ This naturally produces the Leitner-like behavior the spec asks for: words marke
 ## 7. API Routes (suggested)
 
 - `POST /api/auth/login`, `POST /api/auth/logout`
-- `GET /api/words/daily` — fetch or generate today's 25 new words
+- `GET /api/words/daily` — fetch today's up-to-25 initialized, never-used words and create their Score rows
+- `POST /api/internal/generate-content` — internal Supabase Cron endpoint; bearer-secret protected, generates metadata for five uninitialized words, then marks them initialized
 - `POST /api/words/:id/confidence` — set confidence, triggers §6.4 update
 - `GET /api/test/today` — assemble today's ≥30-word test pool + generated questions
 - `POST /api/test/answer` — submit one answer, triggers §6.4 update
@@ -203,6 +203,8 @@ This naturally produces the Leitner-like behavior the spec asks for: words marke
   seed-words.ts
 /data
   word-list.json
+/supabase
+  cron.sql              # Supabase pg_cron + pg_net setup for metadata generation
 middleware.ts
 AGENTS.md
 ```
@@ -212,24 +214,26 @@ AGENTS.md
 ```
 DATABASE_URL=              # Supabase Postgres connection string
 GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
 AUTH_USERNAME=
 AUTH_PASSWORD_HASH=        # bcrypt hash, generate via a small local script
 SESSION_SECRET=            # for signing the session JWT/cookie
+BACKGROUND_JOB_SECRET=     # bearer secret for the Supabase Cron endpoint
 ```
 
 ## 10. Deployment (Render, single service)
 
 1. Push repo to GitHub.
 2. Create a new **Web Service** on Render, connect the repo.
-3. Build command: `npm install && npx prisma generate && npm run build`
+3. Build command: `yarn install --frozen-lockfile && npx prisma generate && npm run build`
 4. Start command: `npm start`
 5. Add all env vars from §9 in Render's dashboard (DB lives on Supabase, so no Render Postgres add-on needed).
 6. Run `npx prisma migrate deploy` (as a Render pre-deploy/one-off job, or manually the first time) against the Supabase `DATABASE_URL`.
-7. Run `npm run seed:words` once (locally against the prod `DATABASE_URL`, or as a Render one-off job) to load the 1000-word list.
+7. Run `npm run seed:words` once (locally against the prod `DATABASE_URL`, or as a Render one-off job) to load the 1000-word list. Seeded words remain uninitialized until Supabase Cron enriches them.
+8. Run `supabase/cron.sql` in Supabase SQL Editor after replacing its URL and secret placeholders.
 
 ## 11. Open Decisions to Confirm Before Building
 
 - Word list source file format: JSON array vs CSV (default: JSON, §4).
-- Pre-generate all word content upfront vs just-in-time (default: just-in-time, §4).
 - Exact test question count beyond the 30 minimum, and whether both question types appear for every word or are sampled.
-- Timezone for "daily" boundaries (midnight in which timezone counts as a new day for word introduction / `nextReviewDate` comparisons).
+- Timezone for "daily" boundaries (chosen: Asia/Kolkata).
