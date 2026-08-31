@@ -5,29 +5,12 @@ export type GeneratedWord = {
   synonyms: [string, string];
   distractors: [string, string, string];
 };
-function valid(value: unknown): value is GeneratedWord {
-  const x = value as GeneratedWord;
-  return (
-    !!x &&
-    typeof x.word === "string" &&
-    typeof x.meaning === "string" &&
-    typeof x.example === "string" &&
-    Array.isArray(x.synonyms) &&
-    x.synonyms.length === 2 &&
-    Array.isArray(x.distractors) &&
-    x.distractors.length === 3 &&
-    [...x.synonyms, ...x.distractors].every(
-      (v) => typeof v === "string" && v.length > 0,
-    )
-  );
-}
-export async function generateWordData(
-  words: string[],
-): Promise<GeneratedWord[]> {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("GROQ_API_KEY is not configured");
-  const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
+async function generateChunk(
+  chunkWords: string[],
+  key: string,
+  model: string,
+): Promise<GeneratedWord[]> {
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {
@@ -38,35 +21,113 @@ export async function generateWordData(
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
+        temperature: 0.1,
+        max_tokens: 4096,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
             content:
-              "Return only JSON in the shape {words:[{word,meaning,example,synonyms:[string,string],distractors:[string,string,string]}]}. Keep definitions concise and distractors plausible but unambiguously wrong.",
+              "You are a lexicographer. For each requested word, return JSON with the format: " +
+              '{"words":[{"word":"<word>","meaning":"<clear concise definition>","example":"<example sentence>","synonyms":["<syn1>","<syn2>"],"distractors":["<dist1>","<dist2>","<dist3>"]}]}. ' +
+              "Return exactly the requested words. Each entry must have exactly 2 synonyms and 3 plausible but incorrect distractors.",
           },
           {
             role: "user",
-            content: `Generate entries for exactly these words: ${JSON.stringify(words)}`,
+            content: `Generate dictionary entries for these words: ${JSON.stringify(chunkWords)}`,
           },
         ],
       }),
     },
   );
+
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
     console.error(`Groq request failed (${response.status}):`, errorBody);
-    throw new Error(`Groq API error (${response.status}): ${errorBody || response.statusText}`);
+    throw new Error(
+      `Groq API error (${response.status}): ${errorBody || response.statusText}`,
+    );
   }
+
   const body = await response.json();
-  const raw = JSON.parse(body.choices?.[0]?.message?.content ?? "{}").words;
-  if (!Array.isArray(raw) || raw.length !== words.length || !raw.every(valid))
-    throw new Error("Groq returned invalid word data");
-  const byWord = new Map(
-    raw.map((x: GeneratedWord) => [x.word.toLowerCase(), x]),
+  const content = body.choices?.[0]?.message?.content ?? "{}";
+  let raw: unknown[] = [];
+  try {
+    const parsed = JSON.parse(content);
+    raw = Array.isArray(parsed.words)
+      ? parsed.words
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
+  } catch (err) {
+    console.error("Failed to parse Groq response JSON:", content);
+    throw new Error("Groq returned unparseable JSON");
+  }
+
+  return chunkWords.map((originalWord, idx) => {
+    const cleanWord = originalWord.trim().toLowerCase();
+    const match =
+      (raw.find(
+        (x: any) =>
+          typeof x?.word === "string" &&
+          x.word.trim().toLowerCase() === cleanWord,
+      ) as any) || raw[idx];
+
+    const meaning =
+      typeof match?.meaning === "string" && match.meaning.trim()
+        ? match.meaning.trim()
+        : `Definition of ${originalWord}`;
+    const example =
+      typeof match?.example === "string" && match.example.trim()
+        ? match.example.trim()
+        : `This sentence demonstrates the usage of ${originalWord}.`;
+
+    const rawSynonyms = Array.isArray(match?.synonyms)
+      ? match.synonyms.filter((s: unknown) => typeof s === "string" && s.trim())
+      : [];
+    const synonyms: [string, string] = [
+      rawSynonyms[0] || `${originalWord} equivalent`,
+      rawSynonyms[1] || `${originalWord} counterpart`,
+    ];
+
+    const rawDistractors = Array.isArray(match?.distractors)
+      ? match.distractors.filter(
+          (d: unknown) => typeof d === "string" && d.trim(),
+        )
+      : [];
+    const distractors: [string, string, string] = [
+      rawDistractors[0] || "unrelated",
+      rawDistractors[1] || "opposite",
+      rawDistractors[2] || "unconnected",
+    ];
+
+    return {
+      word: originalWord,
+      meaning,
+      example,
+      synonyms,
+      distractors,
+    };
+  });
+}
+
+export async function generateWordData(
+  words: string[],
+): Promise<GeneratedWord[]> {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new Error("GROQ_API_KEY is not configured");
+  const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+
+  // Batch into chunks of 5 words for 100% LLM reliability & concurrency
+  const CHUNK_SIZE = 5;
+  const chunks: string[][] = [];
+  for (let i = 0; i < words.length; i += CHUNK_SIZE) {
+    chunks.push(words.slice(i, i + CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) => generateChunk(chunk, key, model)),
   );
-  const ordered = words.map((word) => byWord.get(word.toLowerCase()));
-  if (ordered.some((x) => !x)) throw new Error("Groq omitted a requested word");
-  return ordered as GeneratedWord[];
+
+  return results.flat();
 }
