@@ -2,4 +2,36 @@ import { NextResponse } from "next/server";
 import { db } from "../../../../lib/db";
 import { requireSession } from "../../../../lib/auth";
 import { scheduleReview, type ReviewOutcome } from "../../../../lib/scheduler";
-export async function POST(request:Request){try{await requireSession();const {wordId,correct,quality}=await request.json();if(typeof wordId!=="string"||typeof correct!=="boolean")return NextResponse.json({error:"Invalid answer"},{status:400});const score=await db.score.findUnique({where:{wordId}});if(!score)return NextResponse.json({error:"Word not found"},{status:404});const outcome=(quality|| (correct?"CORRECT":"WRONG_CLOSE")) as ReviewOutcome;const updated=await db.score.update({where:{wordId},data:scheduleReview(score,outcome)});return NextResponse.json({score:updated})}catch(error){return NextResponse.json({error:error instanceof Error&&error.message==="UNAUTHORIZED"?"Unauthorized":"Unable to save answer"},{status:error instanceof Error&&error.message==="UNAUTHORIZED"?401:500})}}
+export async function POST(request: Request) {
+  try {
+    await requireSession();
+    const { wordId, correct, quality } = await request.json();
+    if (typeof wordId !== "string" || typeof correct !== "boolean")
+      return NextResponse.json({ error: "Invalid answer" }, { status: 400 });
+    const score = await db.score.findUnique({ where: { wordId } });
+    if (!score)
+      return NextResponse.json({ error: "Word not found" }, { status: 404 });
+    const outcome = (quality ||
+      (correct ? "CORRECT" : "WRONG_CLOSE")) as ReviewOutcome;
+    const updated = await db.score.update({
+      where: { wordId },
+      data: scheduleReview(score, outcome),
+    });
+    return NextResponse.json({ score: updated });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error && error.message === "UNAUTHORIZED"
+            ? "Unauthorized"
+            : "Unable to save answer",
+      },
+      {
+        status:
+          error instanceof Error && error.message === "UNAUTHORIZED"
+            ? 401
+            : 500,
+      },
+    );
+  }
+}
