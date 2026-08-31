@@ -65,12 +65,17 @@ export async function GET() {
       })),
     });
   } catch (error) {
+    console.error("Failed to prepare daily words:", error);
     const status =
       error instanceof Error && error.message === "UNAUTHORIZED" ? 401 : 500;
     return NextResponse.json(
       {
         error:
-          status === 401 ? "Unauthorized" : "Unable to prepare daily words",
+          status === 401
+            ? "Unauthorized"
+            : error instanceof Error
+              ? error.message
+              : "Unable to prepare daily words",
       },
       { status },
     );

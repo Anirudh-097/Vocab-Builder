@@ -14,9 +14,17 @@ export default function DailyWords() {
     [error, setError] = useState("");
   useEffect(() => {
     fetch("/api/words/daily")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(async (r) => {
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.error || "Could not load today’s words.");
+        }
+        return r.json();
+      })
       .then((x) => setWords(x.words))
-      .catch(() => setError("Could not load today’s words."))
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Could not load today’s words."),
+      )
       .finally(() => setLoading(false));
   }, []);
   async function confidence(id: string, value: string) {

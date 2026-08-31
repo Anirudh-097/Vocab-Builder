@@ -26,6 +26,8 @@ export async function generateWordData(
 ): Promise<GeneratedWord[]> {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error("GROQ_API_KEY is not configured");
+  const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
   const response = await fetch(
     "https://api.groq.com/openai/v1/chat/completions",
     {
@@ -35,7 +37,7 @@ export async function generateWordData(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model,
         temperature: 0.2,
         response_format: { type: "json_object" },
         messages: [
@@ -52,7 +54,11 @@ export async function generateWordData(
       }),
     },
   );
-  if (!response.ok) throw new Error(`Groq request failed (${response.status})`);
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    console.error(`Groq request failed (${response.status}):`, errorBody);
+    throw new Error(`Groq API error (${response.status}): ${errorBody || response.statusText}`);
+  }
   const body = await response.json();
   const raw = JSON.parse(body.choices?.[0]?.message?.content ?? "{}").words;
   if (!Array.isArray(raw) || raw.length !== words.length || !raw.every(valid))
