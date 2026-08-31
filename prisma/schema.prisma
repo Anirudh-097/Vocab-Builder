@@ -1,6 +1,11 @@
-generator client { provider = "prisma-client-js" }
+generator client {
+  provider = "prisma-client-js"
+}
 
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 model Word {
   id          String   @id @default(cuid())
@@ -32,5 +37,14 @@ model Score {
   updatedAt      DateTime   @updatedAt
 }
 
-enum Status { NOT_USED USED }
-enum Confidence { NEW KNEW_IT FORGOT NO_IDEA }
+enum Status {
+  NOT_USED
+  USED
+}
+
+enum Confidence {
+  NEW
+  KNEW_IT
+  FORGOT
+  NO_IDEA
+}

@@ -1,4 +1,55 @@
 import Link from "next/link";
 import { db } from "../../../lib/db";
 
-export default async function Dashboard() { const [total,used,aggregate,due]=await Promise.all([db.word.count(),db.score.count({where:{status:"USED"}}),db.score.aggregate({where:{status:"USED"},_avg:{masteryScore:true}}),db.score.count({where:{status:"USED",nextReviewDate:{lte:new Date()}}})]); return <><section className="hero"><div className="eyebrow">Your 30-day practice</div><h1>Build a vocabulary that sticks.</h1><p>Learn today’s words, then let short reviews bring the right words back at the right time.</p><div className="actions"><Link className="button" href="/daily-words">Open today’s words</Link><Link className="button secondary" href="/daily-test">Take today’s test</Link></div></section><section className="grid"><div className="card"><div className="muted">Words learned</div><div className="stat">{used}<small className="muted"> / {total}</small></div></div><div className="card"><div className="muted">Average mastery</div><div className="stat">{Math.round(aggregate._avg.masteryScore ?? 0)}%</div></div><div className="card"><div className="muted">Reviews due</div><div className="stat">{due}</div></div></section></>; }
+export default async function Dashboard() {
+  const [total, used, aggregate, due] = await Promise.all([
+    db.word.count(),
+    db.score.count({ where: { status: "USED" } }),
+    db.score.aggregate({
+      where: { status: "USED" },
+      _avg: { masteryScore: true },
+    }),
+    db.score.count({
+      where: { status: "USED", nextReviewDate: { lte: new Date() } },
+    }),
+  ]);
+  return (
+    <>
+      <section className="hero">
+        <div className="eyebrow">Your 30-day practice</div>
+        <h1>Build a vocabulary that sticks.</h1>
+        <p>
+          Learn today’s words, then let short reviews bring the right words back
+          at the right time.
+        </p>
+        <div className="actions">
+          <Link className="button" href="/daily-words">
+            Open today’s words
+          </Link>
+          <Link className="button secondary" href="/daily-test">
+            Take today’s test
+          </Link>
+        </div>
+      </section>
+      <section className="grid">
+        <div className="card">
+          <div className="muted">Words learned</div>
+          <div className="stat">
+            {used}
+            <small className="muted"> / {total}</small>
+          </div>
+        </div>
+        <div className="card">
+          <div className="muted">Average mastery</div>
+          <div className="stat">
+            {Math.round(aggregate._avg.masteryScore ?? 0)}%
+          </div>
+        </div>
+        <div className="card">
+          <div className="muted">Reviews due</div>
+          <div className="stat">{due}</div>
+        </div>
+      </section>
+    </>
+  );
+}
