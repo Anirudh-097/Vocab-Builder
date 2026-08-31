@@ -1,0 +1,36 @@
+generator client { provider = "prisma-client-js" }
+
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+model Word {
+  id          String   @id @default(cuid())
+  word        String   @unique
+  meaning     String   @default("")
+  example     String   @default("")
+  synonyms    String[] @default([])
+  distractors String[] @default([])
+  createdAt   DateTime @default(now())
+  score       Score?
+}
+
+model Score {
+  id             String     @id @default(cuid())
+  wordId         String     @unique
+  word           Word       @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  status         Status     @default(NOT_USED)
+  confidence     Confidence @default(NEW)
+  masteryScore   Int        @default(0)
+  timesSeen      Int        @default(0)
+  correctCount   Int        @default(0)
+  incorrectCount Int        @default(0)
+  easeFactor     Float      @default(2.5)
+  intervalDays   Int        @default(0)
+  repetitions    Int        @default(0)
+  lastSeenAt     DateTime?
+  nextReviewDate DateTime?
+  introducedOn   String?
+  updatedAt      DateTime   @updatedAt
+}
+
+enum Status { NOT_USED USED }
+enum Confidence { NEW KNEW_IT FORGOT NO_IDEA }
