@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isValidSession, SESSION_COOKIE } from "./lib/auth";
+import { isValidSession, SESSION_COOKIE } from "./lib/session";
 
 export async function middleware(request: NextRequest) {
   if (

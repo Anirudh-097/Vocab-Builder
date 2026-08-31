@@ -66,16 +66,22 @@ export default function DailyWords() {
             </div>
             <div className="actions">
               <button
-                className="button secondary"
+                className={`button ${w.score?.confidence === "KNEW_IT" ? "" : "secondary"}`}
                 onClick={() => confidence(w.id, "KNEW_IT")}
               >
                 I knew it
               </button>
               <button
-                className="button secondary"
+                className={`button ${w.score?.confidence === "FORGOT" ? "" : "secondary"}`}
                 onClick={() => confidence(w.id, "FORGOT")}
               >
-                Needs review
+                Forgot
+              </button>
+              <button
+                className={`button ${w.score?.confidence === "NO_IDEA" ? "" : "secondary"}`}
+                onClick={() => confidence(w.id, "NO_IDEA")}
+              >
+                No idea
               </button>
             </div>
           </article>

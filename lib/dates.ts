@@ -15,7 +15,7 @@ export function todayKey(date = new Date()): string {
 export function addDays(key: string, days: number): string {
   const date = new Date(`${key}T12:00:00+05:30`);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return todayKey(date);
 }
 export function dayStart(key = todayKey()): Date {
   return new Date(`${key}T00:00:00+05:30`);

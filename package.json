@@ -7,7 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:words": "tsx scripts/seed-words.ts"
+    "seed:words": "tsx scripts/seed-words.ts",
+    "generate:auth": "tsx scripts/generate-auth.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",
