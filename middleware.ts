@@ -4,7 +4,8 @@ import { isValidSession, SESSION_COOKIE } from "./lib/session";
 export async function middleware(request: NextRequest) {
   if (
     request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname.startsWith("/api/auth")
+    request.nextUrl.pathname.startsWith("/api/auth") ||
+    request.nextUrl.pathname === "/api/internal/generate-content"
   )
     return NextResponse.next();
   if (!(await isValidSession(request.cookies.get(SESSION_COOKIE)?.value)))
